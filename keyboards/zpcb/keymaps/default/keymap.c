@@ -3,7 +3,7 @@
 
 #include QMK_KEYBOARD_H
 
-//#include "uart.h"
+#include "uart.h"
 enum custom_keycodes {
     KC_SRCH = SAFE_RANGE,
 };
@@ -48,7 +48,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     /* TODO: better function for init? */
     if( run_once )
     {
-        //uart_init( 115200 );
+        uart_init( 115200 );
         run_once = false;
     }
 
@@ -56,12 +56,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     {
         if( focus_stm )
         {
-            //uart_write(CMD_SEARCH_EXIT);
+            uart_write(CMD_SEARCH_EXIT);
             focus_stm = false;
         }
         else
         {
-            //uart_write(CMD_SEARCH_OPEN);
+            uart_write(CMD_SEARCH_OPEN);
             focus_stm = true;
         }
     }
@@ -77,23 +77,23 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             switch ( keycode ) {
                 /* TODO: make these #defines, easier to configure */
                 case KC_P:
-                    //uart_write( CMD_SEARCH_UP);
+                    uart_write( CMD_SEARCH_UP);
                     break;
                 case KC_N:
-                    //uart_write( CMD_SEARCH_DOWN );
+                    uart_write( CMD_SEARCH_DOWN );
                     break;
                 case KC_ENT:
-                    //uart_write( CMD_SEARCH_SELECT );
+                    uart_write( CMD_SEARCH_SELECT );
                     break;
             }
         }
         else if( keycode == KC_BSPC ) /* backspace character in query */
         {
-            //uart_write( 0x08 ); /* ascii backspace */
+            uart_write( 0x08 ); /* ascii backspace */
         }
         else if( keycode == KC_ESC ) /* escape can exit search */
         {
-            //uart_write(CMD_SEARCH_EXIT);
+            uart_write(CMD_SEARCH_EXIT);
             focus_stm = false;
         }
         else /* put characters into search query */
@@ -103,7 +103,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
             if( c ) /* check if c is valid */
             {
-                //uart_write( c );
+                uart_write( c );
             }
             /* else: do nothing */
 
