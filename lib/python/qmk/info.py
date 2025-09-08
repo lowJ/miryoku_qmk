@@ -145,7 +145,7 @@ def info_json(keyboard):
     info_data = _matrix_size(info_data)
 
     # Merge in data from <keyboard.c>
-    info_data = _extract_led_config(info_data, str(keyboard))
+    #info_data = _extract_led_config(info_data, str(keyboard))
 
     # Validate
     _validate(keyboard, info_data)

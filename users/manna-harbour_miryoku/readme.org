@@ -110,7 +110,8 @@ qmk compile -c -kb crkbd -km manna-harbour_miryoku \
   -e MIRYOKU_CLIPBOARD=WIN \
   -e MIRYOKU_LAYERS=FLIP # build for crkbd with alternative layouts
 #+END_SRC
-
+                            jk
+          
 
 **** make
 
