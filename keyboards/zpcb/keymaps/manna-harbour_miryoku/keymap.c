@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "manna-harbour_miryoku.h"
 #include "uart.h"
 enum custom_keycodes {
     KC_SRCH = SAFE_RANGE,
@@ -19,59 +20,106 @@ enum custom_keycodes {
 #define CMD_SEARCH_DOWN 0x04
 #define CMD_SEARCH_SELECT 0x05
 
-char keycode_to_filename_ascii( uint16_t kc , bool is_shift );
+// Map Base layer keycodes here
+#define ZZ_A LGUI_T(KC_A)
+#define ZZ_B KC_B
+#define ZZ_C KC_C
+#define ZZ_D LCTL_T(KC_D)
+#define ZZ_E KC_E
+#define ZZ_F LSFT_T(KC_F)
+#define ZZ_G KC_G
+#define ZZ_H KC_H
+#define ZZ_I KC_I
+#define ZZ_J RSFT_T(KC_J)
+#define ZZ_K RCTL_T(KC_K)
+#define ZZ_L RALT_T(KC_L)
+#define ZZ_M KC_M 
+#define ZZ_N KC_N
+#define ZZ_O KC_O
+#define ZZ_P KC_P
+#define ZZ_Q KC_Q
+#define ZZ_R KC_R
+#define ZZ_S LALT_T(KC_S)
+#define ZZ_T KC_T
+#define ZZ_U KC_U
+#define ZZ_V KC_V
+#define ZZ_W KC_W
+#define ZZ_X ALGR_T(KC_X)
+#define ZZ_Y KC_Y
+#define ZZ_Z LT(U_BUTTON, KC_Z)
+#define ZZ_BKSPC LT(U_NUM, KC_BSPC)
+#define ZZ_DOT ALGR_T(KC_DOT)
+#define ZZ_SLSH LT(U_BUTTON, KC_SLSH)
+#define ZZ_ENTER LT(U_SYM, KC_ENT)
+#define ZZ_ESC LT(U_MEDIA, KC_ESC)
+#define ZZ_SRCH_UP_KC LT(U_NAV, KC_SPC)
+#define ZZ_SRCH_DOWN_KC  LT(U_MOUSE,KC_TAB)
+
+char zz_keycode_to_filename_ascii( uint16_t kc );
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     static bool run_once = true;
     static bool focus_stm = false;
 
-    /* TODO: better function for init? */
+    /* TODO: better hook for this? */
     if( run_once )
     {
-        uart_init( 115200 );
+        uart_init( 115200 ); //faster?
         run_once = false;
     }
 
-    if( keycode == KC_SRCH && record->event.pressed )
+
+//#define MOD_MASK_CTRL (MOD_BIT(KC_LEFT_CTRL) | MOD_BIT(KC_RIGHT_CTRL))
+//#define MOD_MASK_SHIFT (MOD_BIT(KC_LEFT_SHIFT) | MOD_BIT(KC_RIGHT_SHIFT))
+//#define MOD_MASK_ALT (MOD_BIT(KC_LEFT_ALT) | MOD_BIT(KC_RIGHT_ALT))
+//#define MOD_MASK_GUI (MOD_BIT(KC_LEFT_GUI) | MOD_BIT(KC_RIGHT_GUI))
+
+    uint8_t mods = get_mods();
+    bool lalt_pressed = mods & (MOD_BIT(KC_LEFT_ALT)) ;
+    bool ralt_pressed = mods & (MOD_BIT(KC_RIGHT_ALT)) ;
+
+    // CMD_SEARCH_OPEN / CMD_SEARCH_EXIT
+    // Details: TODO
+    // Eg: I have this confiured if LALT and RALT pressed at the same time THEN a ctrl 
+    if( lalt_pressed && ralt_pressed && record->event.pressed && (keycode == LCTL_T(KC_D) || keycode == RCTL_T(KC_K)) )
     {
+        // If we are in search mode already, we should exit
         if( focus_stm )
         {
             uart_write(CMD_SEARCH_EXIT);
             focus_stm = false;
         }
-        else
+        else // We are not in search mode, we should open search mode
         {
             uart_write(CMD_SEARCH_OPEN);
             focus_stm = true;
         }
+
+        // nothing else to do, return false since we dont need to send anything to host
+        return false;
     }
 
+    // Only need to act on keypresses if we are in search mode
     if( focus_stm && record->event.pressed ) /* only operate on presses */
     {
-        uint8_t mods = get_mods();
-        bool shift_pressed = (mods & MOD_MASK_SHIFT); /* TODO: test this */
-        bool ctrl_pressed = ( mods & MOD_MASK_CTRL); /* TODO: test this */
-
-        if( ctrl_pressed ) /* ctrl layer handles up down select commands */
+        if( keycode == ZZ_SRCH_UP_KC )
         {
-            switch ( keycode ) {
-                /* TODO: make these #defines, easier to configure */
-                case KC_P:
-                    uart_write( CMD_SEARCH_UP);
-                    break;
-                case KC_N:
-                    uart_write( CMD_SEARCH_DOWN );
-                    break;
-                case KC_ENT:
-                    uart_write( CMD_SEARCH_SELECT );
-                    break;
-            }
+            uart_write(CMD_SEARCH_UP);
         }
-        else if( keycode == KC_BSPC ) /* backspace character in query */
+        else if(keycode == ZZ_SRCH_DOWN_KC )
+        {
+            uart_write(CMD_SEARCH_DOWN );
+        }
+        else if( keycode == ZZ_ENTER ) /* */
+        {
+            uart_write( CMD_SEARCH_SELECT ); /* send select cmd and exit search */
+            focus_stm = false;
+        }
+        else if( keycode == ZZ_BKSPC ) /* backspace character in search query */
         {
             uart_write( 0x08 ); /* ascii backspace */
         }
-        else if( keycode == KC_ESC ) /* escape can exit search */
+        else if( keycode == ZZ_ESC ) /* escape can exit search */
         {
             uart_write(CMD_SEARCH_EXIT);
             focus_stm = false;
@@ -79,7 +127,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         else /* put characters into search query */
         {
             /* TODO: maybe we shouldn't filter any chars here? Filtering can be done on stm */
-            char c = keycode_to_filename_ascii(keycode, shift_pressed);
+            char c = zz_keycode_to_filename_ascii(keycode);
 
             if( c ) /* check if c is valid */
             {
@@ -98,81 +146,103 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 }
 
-char keycode_to_filename_ascii( uint16_t kc , bool is_shift )
+/* TODO: support case sensitivity later */
+char zz_keycode_to_filename_ascii( uint16_t kc )
 {
-
-//Letters:
-//KC_A = 0x04
-//KC_Z = 0x1d
-//Numbers:
-//KC_1 = 0x1e
-//KC_0 = 0x27
-//Others:
-//KC_DOT
-//KC_UNDERSCORE
-//KC_SLSH /* added to support file paths */
-
-    // Handle letter keys
-    if( kc >= KC_A && kc <= KC_Z )
+    char c = 0;
+    switch (kc)
     {
-        if( is_shift )
-        {
-            return ('a' + (kc - KC_A));
-        }
-        else
-        {
-            return ('A' + (kc - KC_A));
-        }
-
+        case ZZ_A:
+            c = 'a';
+            break;
+        case ZZ_B:
+            c = 'b';
+            break;
+        case ZZ_C:
+                c = 'c';
+                break;
+        case ZZ_D:
+                c = 'd';
+                break;
+        case ZZ_E:
+                c = 'e';
+                break;
+        case ZZ_F:
+                c = 'f';
+                break;
+        case ZZ_G:
+                c = 'g';
+                break;
+        case ZZ_H:
+                c = 'h';
+                break;
+        case ZZ_I:
+                c = 'i';
+                break;
+        case ZZ_J:
+                c = 'j';
+                break;
+        case ZZ_K:
+                c = 'k';
+                break;
+        case ZZ_L:
+                c = 'l';
+                break;
+        case ZZ_M:
+                c = 'm';
+                break;
+        case ZZ_N:
+                c = 'n';
+                break;
+        case ZZ_O:
+                c = 'o';
+                break;
+        case ZZ_P:
+                c = 'p';
+                break;
+        case ZZ_Q:
+                c = 'q';
+                break;
+        case ZZ_R:
+                c = 'r';
+                break;
+        case ZZ_S:
+                c = 's';
+                break;
+        case ZZ_T:
+                c = 't';
+                break;
+        case ZZ_U:
+                c = 'u';
+                break;
+        case ZZ_V:
+                c = 'v';
+                break;
+        case ZZ_W:
+                c = 'w';
+                break;
+        case ZZ_X:
+                c = 'x';
+                break;
+        case ZZ_Y:
+                c = 'y';
+                break;
+        case ZZ_Z:
+                c = 'z';
+                break;
+        case ZZ_DOT:
+            c = '.';
+            break;
+        case ZZ_SLSH:
+            c = '/';
+            break;
+        default:
+            // unknown
+            c = 0;
+            break;
     }
 
-    // Handle number keys
-    if( kc >= KC_1 && kc <= KC_0 )
-    {
-        if( ! is_shift )
-        {
-            if( KC_0 )
-            {
-                return '0';
-            }
-            else
-            {
-                return '1' + (kc = KC_1);
 
-            }
-        }
-    }
-
-    // Others
-    if( kc == KC_DOT )
-    {
-        if( ! is_shift )
-        {
-            return '.';
-        }
-    }
-
-    if (kc == KC_UNDERSCORE )
-    {
-        if( is_shift )
-        {
-            return '_';
-        }
-        else
-        {
-            return '-';
-        }
-    }
-
-    if( kc == KC_SLSH )
-    {
-        if( ! is_shift )
-        {
-            return '/';
-        }
-    }
-
-    // Unknown
-    return 0x00;
+    return c;
 
 }
