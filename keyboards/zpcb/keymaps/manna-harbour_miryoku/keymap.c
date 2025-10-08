@@ -21,6 +21,7 @@ enum custom_keycodes {
 #define CMD_SEARCH_SELECT 0x05
 
 // Map Base layer keycodes here
+//put char into search query
 #define ZZ_A LGUI_T(KC_A)
 #define ZZ_B KC_B
 #define ZZ_C KC_C
@@ -50,9 +51,18 @@ enum custom_keycodes {
 #define ZZ_BKSPC LT(U_NUM, KC_BSPC)
 #define ZZ_DOT ALGR_T(KC_DOT)
 #define ZZ_SLSH LT(U_BUTTON, KC_SLSH)
-#define ZZ_ENTER LT(U_SYM, KC_ENT)
+
+// navigation related
+// KC to select video
+#define ZZ_ENTER LT(U_SYM, KC_ENT) 
+
+// KC to exit when in search mode 
 #define ZZ_ESC LT(U_MEDIA, KC_ESC)
+
+// KC to move selection up
 #define ZZ_SRCH_UP_KC LT(U_NAV, KC_SPC)
+
+// KC to move selection down
 #define ZZ_SRCH_DOWN_KC  LT(U_MOUSE,KC_TAB)
 
 char zz_keycode_to_filename_ascii( uint16_t kc );
