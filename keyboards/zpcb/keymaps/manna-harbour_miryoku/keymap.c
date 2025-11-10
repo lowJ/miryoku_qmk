@@ -1,28 +1,54 @@
-// Copyright 2019 Manna Harbour
-// https://github.com/manna-harbour/miryoku
-
-// This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 2 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details. You should have received a copy of the GNU General Public License along with this program. If not, see <http://www.gnu.org/licenses/>.
-
 #include QMK_KEYBOARD_H
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "manna-harbour_miryoku.h"
+//
 #include "uart.h"
-enum custom_keycodes {
-    KC_SRCH = SAFE_RANGE,
-};
-//Special commands
-//TODO: check these enumerations
-#define CMD_SEARCH_OPEN 0x01
-#define CMD_SEARCH_EXIT 0x02
-#define CMD_SEARCH_UP 0x03
-#define CMD_SEARCH_DOWN 0x04
-#define CMD_SEARCH_SELECT 0x05
 
-// Map Base layer keycodes here
-//put char into search query
-#define ZZ_A LGUI_T(KC_A)
+
+// This file is an example of how to setup the QMK firmware to control the STM32 video player
+// QMK allows us to define a function called process_record_user, this will get called everytime a key is pressed.
+// process_record_user allows us to hook in to QMK and inject code for commanding the STM32 video player
+// The general flow is as follows: Key is pressed on the keyboard, process_recrod_user gets called, we can define behaviour based on the key pressed, and we can send a command over UART to the STM32 video player
+
+// The STM32 implements "SEARCH MODE"
+// If we are in search mode
+// If not in search mode
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
+// Map QMK baser layer keypress to commands to send while in search mode (focus_stm = true)
+
+// KC to enter search mode
+// I do not have a specific key to press for entering search mode.
+// Instead, while not in search mode (normal keyboard operation), I detect a special keycombo for entering search mode (Eg. LALT & RALT held, and the 'S' or 'K' key is pressed)
+// This is a special case since it only gets detected when we are not in search mode (focus_stm = false)
+// See the ENTER SEARCH MODE BEHAVIOUR section below
+
+// The following apply when we are in search mode (focus_stm = true)
+
+// KC to backspace a character in the search query
+// Eg. pressing the backspace key will result in backspacing a character in the search query, when in search mode
+#define ZZ_SRCH_BKSPC LT(U_NUM, KC_BSPC)
+
+// KC to select the entry the cursor is on
+// Eg. pressing enter key will select the video the cursor is on
+#define ZZ_SRCH_SELECT_KC LT(U_SYM, KC_ENT)
+
+// KC to exit when in search mode
+// Eg. pressing ESC key will exit search mode
+#define ZZ_SRCH_EXIT_KC LT(U_MEDIA, KC_ESC)
+
+// Eg. pressing space and tab key (right next to eachother in my layout) will move the search cursor up an down
+#define ZZ_SRCH_UP_KC LT(U_NAV, KC_SPC) // KC to move selection up
+#define ZZ_SRCH_DOWN_KC  LT(U_MOUSE,KC_TAB) // KC to move selection down
+
+
+
+// Map character input keys into the search query
+// These mappings are used by zz_keycode_to_filename_ascii to map a keypress to a ascii character
+// Eg. If we are in search mode, pressing a "LGUI_T(KC_A)" will send the 'a' character to the STM32 over UART
+#define ZZ_A LGUI_T(KC_A) // my layout uses homerow mods, so there is where the mod tap KC wrapper (LGUI_T(kc)) comes from
 #define ZZ_B KC_B
 #define ZZ_C KC_C
 #define ZZ_D LCTL_T(KC_D)
@@ -34,7 +60,7 @@ enum custom_keycodes {
 #define ZZ_J RSFT_T(KC_J)
 #define ZZ_K RCTL_T(KC_K)
 #define ZZ_L RALT_T(KC_L)
-#define ZZ_M KC_M 
+#define ZZ_M KC_M
 #define ZZ_N KC_N
 #define ZZ_O KC_O
 #define ZZ_P KC_P
@@ -48,95 +74,112 @@ enum custom_keycodes {
 #define ZZ_X ALGR_T(KC_X)
 #define ZZ_Y KC_Y
 #define ZZ_Z LT(U_BUTTON, KC_Z)
-#define ZZ_BKSPC LT(U_NUM, KC_BSPC)
 #define ZZ_DOT ALGR_T(KC_DOT)
 #define ZZ_SLSH LT(U_BUTTON, KC_SLSH)
+// TODO: Add support for numbers
+//////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
 
-// navigation related
-// KC to select video
-#define ZZ_ENTER LT(U_SYM, KC_ENT) 
 
-// KC to exit when in search mode 
-#define ZZ_ESC LT(U_MEDIA, KC_ESC)
-
-// KC to move selection up
-#define ZZ_SRCH_UP_KC LT(U_NAV, KC_SPC)
-
-// KC to move selection down
-#define ZZ_SRCH_DOWN_KC  LT(U_MOUSE,KC_TAB)
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+// UART COMMAND MAPPING
+// These should match the numbering in stm32/Core/Inc/app.h
+#define CMD_SEARCH_OPEN 0x01
+#define CMD_SEARCH_EXIT 0x02
+#define CMD_SEARCH_UP 0x03
+#define CMD_SEARCH_DOWN 0x04
+#define CMD_SEARCH_SELECT 0x05
+#define CMD_BACKSPACE 0x08
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
 
 char zz_keycode_to_filename_ascii( uint16_t kc );
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    //////////////////////////////
+    // This block only runs once and is used to setup the UART peripheral
     static bool run_once = true;
-    static bool focus_stm = false;
-
-    /* TODO: better hook for this? */
     if( run_once )
     {
-        uart_init( 115200 ); //faster?
+        uart_init( 115200 );
         run_once = false;
     }
+    ///////////////////////////////
+
+    /////////////////////////////
+    // focus_stm
+    // This is a state variable used to determine if we should be talking with the STM32 to the USB Host
+    // if focus_stm = false - in this state keyboard shoud operate normally. Keypresses will be sent to the USB Host like normal.
+    // if focus_stm = true - in this state the keyboard is talking with the stm32 video player. Keypresses will result in commands being sent to the stm32 video player instead of the USB Host we are plugged into. This is done by having process_record_user return false, when this function returns false QMK will not send keypresses to the USB Host.
+    static bool focus_stm = false;
+    /////////////////////////////
 
 
-//#define MOD_MASK_CTRL (MOD_BIT(KC_LEFT_CTRL) | MOD_BIT(KC_RIGHT_CTRL))
-//#define MOD_MASK_SHIFT (MOD_BIT(KC_LEFT_SHIFT) | MOD_BIT(KC_RIGHT_SHIFT))
-//#define MOD_MASK_ALT (MOD_BIT(KC_LEFT_ALT) | MOD_BIT(KC_RIGHT_ALT))
-//#define MOD_MASK_GUI (MOD_BIT(KC_LEFT_GUI) | MOD_BIT(KC_RIGHT_GUI))
-
+    // Check if ALT modifiers are pressed
     uint8_t mods = get_mods();
     bool lalt_pressed = mods & (MOD_BIT(KC_LEFT_ALT)) ;
     bool ralt_pressed = mods & (MOD_BIT(KC_RIGHT_ALT)) ;
 
-    // CMD_SEARCH_OPEN / CMD_SEARCH_EXIT
-    // Details: TODO
-    // Eg: I have this confiured if LALT and RALT pressed at the same time THEN a ctrl 
-    if( lalt_pressed && ralt_pressed && record->event.pressed && (keycode == LCTL_T(KC_D) || keycode == RCTL_T(KC_K)) )
+
+    /////////////////////////////////////////
+    // ENTER SEARCH MODE BEHAVIOUR
+    // Below defines the keycombo to press to enter search mode:
+    // First make sure we are not already in search mode. If LALT and RALT is pressed at the same time, then if LCTRL or RCTRL is pressed, then we will enter search mode (focus_stm = true) and tell the STM32 video player to open the search gui
+    // Note: if you are not using homerow mods/mod-tap this would look like holding down the LALT and RLT, then pressing the 'K' or 'D' key
+    if( ! focus_stm && lalt_pressed && ralt_pressed && (keycode == LCTL_T(KC_D) || keycode == RCTL_T(KC_K)) && record->event.pressed )
     {
-        // If we are in search mode already, we should exit
-        if( focus_stm )
-        {
-            uart_write(CMD_SEARCH_EXIT);
-            focus_stm = false;
-        }
-        else // We are not in search mode, we should open search mode
-        {
-            uart_write(CMD_SEARCH_OPEN);
-            focus_stm = true;
-        }
+        // Send the command to the STM32
+        uart_write(CMD_SEARCH_OPEN);
+
+        // Set focus_stm state to true to indicate search mode is active
+        focus_stm = true;
 
         // nothing else to do, return false since we dont need to send anything to host
         return false;
     }
+    ////////////////////////////////////////
 
-    // Only need to act on keypresses if we are in search mode
+    ////////////////////////////////////////////////
+    // DEFINE KEYPRESS HANDLING IN SEARCH MODE
+    // See the mappig definition above where ZZ_** are mapped to KC's on the base layer
     if( focus_stm && record->event.pressed ) /* only operate on presses */
     {
+        // Eg. if keycode pressed equals ZZ_SRCH_UP_KC then send the search up command
         if( keycode == ZZ_SRCH_UP_KC )
         {
+            // Send command to move selection cursor up
             uart_write(CMD_SEARCH_UP);
         }
         else if(keycode == ZZ_SRCH_DOWN_KC )
         {
+            // Send command to move selection cursor down
             uart_write(CMD_SEARCH_DOWN );
         }
-        else if( keycode == ZZ_ENTER ) /* */
+        else if( keycode == ZZ_SRCH_SELECT_KC ) /* */
         {
-            uart_write( CMD_SEARCH_SELECT ); /* send select cmd and exit search */
-            focus_stm = false;
+            // Send command to select entry at the cursor
+            uart_write( CMD_SEARCH_SELECT );
+
+            // When the STM32 receives this command it will start playing the selected video file and  exit search mode
+            focus_stm = false; // exit search mode
         }
-        else if( keycode == ZZ_BKSPC ) /* backspace character in search query */
+        else if( keycode == ZZ_SRCH_BKSPC ) /* backspace character in search query */
         {
-            uart_write( 0x08 ); /* ascii backspace */
+            // Send command to backspace a character in the search query
+            uart_write( CMD_BACKSPACE );
         }
-        else if( keycode == ZZ_ESC ) /* escape can exit search */
+        else if( keycode == ZZ_SRCH_EXIT_KC )
         {
+            // Send command to exit the search mode
             uart_write(CMD_SEARCH_EXIT);
-            focus_stm = false;
+            focus_stm = false; // exit search mode
         }
-        else /* put characters into search query */
+        else
         {
-            /* TODO: maybe we shouldn't filter any chars here? Filtering can be done on stm */
+            // else keycode should be a character added to the search query
+
+            // convert the keycode to an ascii character
             char c = zz_keycode_to_filename_ascii(keycode);
 
             if( c ) /* check if c is valid */
@@ -156,12 +199,13 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 }
 
-/* TODO: support case sensitivity later */
 char zz_keycode_to_filename_ascii( uint16_t kc )
 {
+    /* TODO: support case sensitivity? */
     char c = 0;
     switch (kc)
     {
+        // TODO: Add support for numbers
         case ZZ_A:
             c = 'a';
             break;
