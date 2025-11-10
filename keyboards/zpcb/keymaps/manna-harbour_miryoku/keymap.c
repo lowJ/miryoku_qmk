@@ -9,16 +9,41 @@
 // This file is an example of how to setup the QMK firmware to control the STM32 video player
 // QMK allows us to define a function called process_record_user, this will get called everytime a key is pressed.
 // process_record_user allows us to hook in to QMK and inject code for commanding the STM32 video player
-// The general flow is as follows: Key is pressed on the keyboard, process_recrod_user gets called, we can define behaviour based on the key pressed, and we can send a command over UART to the STM32 video player
+// The general flow is as follows: Key is pressed on the keyboard, process_recrod_user gets called, send a command over UART to the STM32 video player
 
-// The STM32 can be in "SEARCH MODE" or not in "SEARCH_MODE"
-// If in "SEARCH_MODE" it will display the search UI and accept a number of commands over UART for interfaceing with the search window
+
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+// UART COMMAND MAPPING
+// These should match the numbering in stm32/Core/Inc/app.h
+#define CMD_SEARCH_OPEN 0x01
+#define CMD_SEARCH_EXIT 0x02
+#define CMD_SEARCH_UP 0x03
+#define CMD_SEARCH_DOWN 0x04
+#define CMD_SEARCH_SELECT 0x05
+#define CMD_BACKSPACE 0x08
+//////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////
+
+
+/////////////////////////////
+////////////////////////////
+/////////////////////////////
+// focus_stm
+// This is a state variable used to determine if we should be talking with the STM32 OR with the USB Host (normal keyboard operation)
+// if focus_stm = false - in this state keyboard shoud operate normally. Keypresses will be sent to the USB Host like normal.
+// if focus_stm = true - in this state the keyboard is talking with the stm32 video player. Keypresses will result in commands being sent to the stm32 video player instead of the USB Host we are plugged into. By having process_record_user return false, we can tell QMK to not send any keypresses to the USB Host
+bool focus_stm = false;
+/////////////////////////////
+////////////////////////////
+
+
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////
 // Map QMK baser layer keypress to commands to send while in search mode (focus_stm = true). See note below about focus_stm
 
-// KC to enter search mode
+// 1. KC to enter search mode ( sends CMD_SEARCH_OPEN )
 // I do not have a specific key to press for entering search mode.
 // Instead, while not in search mode (normal keyboard operation), I detect a special keycombo for entering search mode (Eg. LALT & RALT held, and the 'S' or 'K' key is pressed)
 // This is a special case since it only gets detected when we are not in search mode (focus_stm = false)
@@ -26,26 +51,27 @@
 
 // The following apply when we are in search mode (focus_stm = true)
 
-// KC to backspace a character in the search query
+// 2. KC to backspace a character in the search query ( sends CMD_BACKSPACE )
 // Eg. pressing the backspace key will result in backspacing a character in the search query, when in search mode
 #define ZZ_SRCH_BKSPC LT(U_NUM, KC_BSPC)
 
-// KC to select the entry the cursor is on
+// 3. KC to select the entry the cursor is on ( sends CMD_SEARCH_SELECT )
 // Eg. pressing enter key will select the video the cursor is on
 #define ZZ_SRCH_SELECT_KC LT(U_SYM, KC_ENT)
 
-// KC to exit when in search mode
+// 4. KC to exit when in search mode (sends CMD_SEARCH_EXIT )
 // Eg. pressing ESC key will exit search mode
 #define ZZ_SRCH_EXIT_KC LT(U_MEDIA, KC_ESC)
 
-// Eg. pressing space and tab key (right next to eachother in my layout) will move the search cursor up an down
-#define ZZ_SRCH_UP_KC LT(U_NAV, KC_SPC) // KC to move selection up
-#define ZZ_SRCH_DOWN_KC  LT(U_MOUSE,KC_TAB) // KC to move selection down
+// 5. Eg. pressing space and tab key (right next to eachother in my layout) will move the search cursor up an down
+#define ZZ_SRCH_UP_KC LT(U_NAV, KC_SPC) // KC to move selection up ( sends CMD_SEARCH_UP )
+#define ZZ_SRCH_DOWN_KC  LT(U_MOUSE,KC_TAB) // KC to move selection down ( sends CMD_SEARCH_DOWN )
 
 
 
 // Map keypresses for sending character input into the search query
-// These mappings are used by zz_keycode_to_filename_ascii to map a keypress to a ascii character
+
+// 6. These mappings are used by zz_keycode_to_filename_ascii to map a keypress to a ascii character
 // Eg. If we are in search mode, pressing a "LGUI_T(KC_A)" will send the 'a' character to the STM32 over UART
 #define ZZ_A LGUI_T(KC_A) // my layout uses homerow mods, so there is where the mod tap KC wrapper (LGUI_T(kc)) comes from
 #define ZZ_B KC_B
@@ -81,22 +107,11 @@
 //////////////////////////////////////////////////////////////////////////////////////////
 
 
-//////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////
-// UART COMMAND MAPPING
-// These should match the numbering in stm32/Core/Inc/app.h
-#define CMD_SEARCH_OPEN 0x01
-#define CMD_SEARCH_EXIT 0x02
-#define CMD_SEARCH_UP 0x03
-#define CMD_SEARCH_DOWN 0x04
-#define CMD_SEARCH_SELECT 0x05
-#define CMD_BACKSPACE 0x08
-//////////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////
 
 char zz_keycode_to_filename_ascii( uint16_t kc );
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    //////////////////////////////
     //////////////////////////////
     // This block only runs once and is used to setup the UART peripheral
     static bool run_once = true;
@@ -106,14 +121,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         run_once = false;
     }
     ///////////////////////////////
+    //////////////////////////////
 
-    /////////////////////////////
-    // focus_stm
-    // This is a state variable used to determine if we should be talking with the STM32 to the USB Host
-    // if focus_stm = false - in this state keyboard shoud operate normally. Keypresses will be sent to the USB Host like normal.
-    // if focus_stm = true - in this state the keyboard is talking with the stm32 video player. Keypresses will result in commands being sent to the stm32 video player instead of the USB Host we are plugged into. This is done by having process_record_user return false, when this function returns false QMK will not send keypresses to the USB Host.
-    static bool focus_stm = false;
-    /////////////////////////////
 
 
     // Check if ALT modifiers are pressed
@@ -122,6 +131,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     bool ralt_pressed = mods & (MOD_BIT(KC_RIGHT_ALT)) ;
 
 
+    /////////////////////////////////////////
     /////////////////////////////////////////
     // ENTER SEARCH MODE BEHAVIOUR
     // Below defines the keycombo to press to enter search mode:
@@ -139,7 +149,10 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         return false;
     }
     ////////////////////////////////////////
+    ////////////////////////////////////////
 
+
+    ////////////////////////////////////////////////
     ////////////////////////////////////////////////
     // DEFINE KEYPRESS HANDLING IN SEARCH MODE
     // See the mappig definition above where ZZ_** are mapped to KC's on the base layer
@@ -193,6 +206,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         /* when focused on stm, return false to not send keypresses to HID Host */
         return false;
     }
+    ////////////////////////////////////////////////
+    ////////////////////////////////////////////////
 
 
     return true;
