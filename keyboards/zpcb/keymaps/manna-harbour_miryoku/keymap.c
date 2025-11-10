@@ -11,13 +11,12 @@
 // process_record_user allows us to hook in to QMK and inject code for commanding the STM32 video player
 // The general flow is as follows: Key is pressed on the keyboard, process_recrod_user gets called, we can define behaviour based on the key pressed, and we can send a command over UART to the STM32 video player
 
-// The STM32 implements "SEARCH MODE"
-// If we are in search mode
-// If not in search mode
+// The STM32 can be in "SEARCH MODE" or not in "SEARCH_MODE"
+// If in "SEARCH_MODE" it will display the search UI and accept a number of commands over UART for interfaceing with the search window
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////
-// Map QMK baser layer keypress to commands to send while in search mode (focus_stm = true)
+// Map QMK baser layer keypress to commands to send while in search mode (focus_stm = true). See note below about focus_stm
 
 // KC to enter search mode
 // I do not have a specific key to press for entering search mode.
@@ -45,7 +44,7 @@
 
 
 
-// Map character input keys into the search query
+// Map keypresses for sending character input into the search query
 // These mappings are used by zz_keycode_to_filename_ascii to map a keypress to a ascii character
 // Eg. If we are in search mode, pressing a "LGUI_T(KC_A)" will send the 'a' character to the STM32 over UART
 #define ZZ_A LGUI_T(KC_A) // my layout uses homerow mods, so there is where the mod tap KC wrapper (LGUI_T(kc)) comes from
@@ -77,6 +76,7 @@
 #define ZZ_DOT ALGR_T(KC_DOT)
 #define ZZ_SLSH LT(U_BUTTON, KC_SLSH)
 // TODO: Add support for numbers
+
 //////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -201,7 +201,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
 char zz_keycode_to_filename_ascii( uint16_t kc )
 {
-    /* TODO: support case sensitivity? */
+    // return 0 if kc is not mapped/supported
     char c = 0;
     switch (kc)
     {
